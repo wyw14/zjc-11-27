@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import crypto from 'node:crypto';
 import {
   createStory,
   getAllStories,
@@ -16,8 +17,49 @@ import {
 
 const app = express();
 const PORT = process.env.PORT || 4026;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+const activeTokens = new Set();
+
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
+
+function generateToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+function requireAdmin(req, res, next) {
+  const token = req.headers['x-admin-token'];
+  if (!token || !activeTokens.has(token)) {
+    return res.status(401).json({ error: '需要管理员权限，请先登录' });
+  }
+  next();
+}
+
+app.post('/api/admin/login', (req, res) => {
+  try {
+    const { password } = req.body || {};
+    if (!password) {
+      return res.status(400).json({ error: '请输入管理员密码' });
+    }
+    if (password !== ADMIN_PASSWORD) {
+      return res.status(401).json({ error: '密码错误' });
+    }
+    const token = generateToken();
+    activeTokens.add(token);
+    res.json({ token });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: '登录失败' });
+  }
+});
+
+app.post('/api/admin/logout', (req, res) => {
+  const token = req.headers['x-admin-token'];
+  if (token) {
+    activeTokens.delete(token);
+  }
+  res.json({ message: '已退出登录' });
+});
 
 app.get('/api/config', (_req, res) => {
   res.json({
@@ -120,7 +162,7 @@ app.post('/api/stories/:id/entries', (req, res) => {
   }
 });
 
-app.post('/api/admin/stories/:id/reset', (req, res) => {
+app.post('/api/admin/stories/:id/reset', requireAdmin, (req, res) => {
   try {
     const result = resetStory(req.params.id);
     if (!result.success) {
@@ -136,7 +178,7 @@ app.post('/api/admin/stories/:id/reset', (req, res) => {
   }
 });
 
-app.get('/api/admin/sensitive-words', (_req, res) => {
+app.get('/api/admin/sensitive-words', requireAdmin, (_req, res) => {
   try {
     const words = getAllSensitiveWords();
     res.json(words);
@@ -146,7 +188,7 @@ app.get('/api/admin/sensitive-words', (_req, res) => {
   }
 });
 
-app.post('/api/admin/sensitive-words', (req, res) => {
+app.post('/api/admin/sensitive-words', requireAdmin, (req, res) => {
   try {
     const { word } = req.body || {};
     const result = addSensitiveWord(word);
@@ -160,7 +202,7 @@ app.post('/api/admin/sensitive-words', (req, res) => {
   }
 });
 
-app.delete('/api/admin/sensitive-words/:id', (req, res) => {
+app.delete('/api/admin/sensitive-words/:id', requireAdmin, (req, res) => {
   try {
     const result = deleteSensitiveWord(req.params.id);
     if (!result.success) {

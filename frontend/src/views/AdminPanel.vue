@@ -7,8 +7,14 @@
             <h1>🛠️ 故事管理中心</h1>
             <p class="admin-subtitle">管理所有社区微小说与敏感词配置</p>
           </div>
+          <div v-if="isLoggedIn" class="admin-user">
+            <span class="admin-badge">👑 管理员</span>
+            <button class="btn-secondary btn-sm" @click="handleLogout">
+              退出登录
+            </button>
+          </div>
         </div>
-        <div class="tabs">
+        <div v-if="isLoggedIn" class="tabs">
           <button
             :class="['tab-btn', activeTab === 'stories' ? 'active' : '']"
             @click="activeTab = 'stories'"
@@ -24,151 +30,178 @@
         </div>
       </header>
 
-      <section v-if="activeTab === 'stories'" class="admin-content card">
-        <div class="section-toolbar">
-          <span class="section-desc">管理社区中的故事内容，可重置已完结或违规故事</span>
-          <button class="btn-secondary btn-sm" @click="loadStories">
-            🔄 刷新列表
+      <section v-if="!isLoggedIn" class="login-section card">
+        <div class="login-icon">🔐</div>
+        <h2 class="login-title">管理员登录</h2>
+        <p class="login-desc">请输入管理员密码以访问管理中心</p>
+        <div class="login-form">
+          <div class="form-group">
+            <input
+              v-model="loginPassword"
+              type="password"
+              placeholder="请输入管理员密码..."
+              @keyup.enter="handleLogin"
+            />
+          </div>
+          <div v-if="loginError" class="error-text">{{ loginError }}</div>
+          <button
+            class="btn-primary btn-block"
+            :disabled="logining || !loginPassword"
+            @click="handleLogin"
+          >
+            {{ logining ? '登录中...' : '登 录' }}
           </button>
+          <p class="login-hint">默认密码：admin123</p>
         </div>
-
-        <div v-if="storiesLoading" class="loading">正在加载...</div>
-
-        <div v-else-if="stories.length === 0" class="empty">
-          <div class="empty-icon">📭</div>
-          <p>暂无故事数据</p>
-        </div>
-
-        <template v-else>
-          <div class="table-wrap">
-            <table class="admin-table">
-              <thead>
-                <tr>
-                  <th>故事标题</th>
-                  <th class="num-col">参与人数</th>
-                  <th class="num-col">段数</th>
-                  <th class="num-col">字数</th>
-                  <th class="status-col">状态</th>
-                  <th class="time-col">最后更新</th>
-                  <th class="action-col">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="s in stories" :key="s.id">
-                  <td class="title-cell">
-                    <router-link :to="`/story/${s.id}`" class="story-link">
-                      <span class="story-name">{{ s.title }}</span>
-                    </router-link>
-                    <span class="story-id">#{{ s.id.slice(0, 8) }}</span>
-                  </td>
-                  <td class="num-col">
-                    <span
-                      :class="['num-val', s.participantCount >= 10 ? 'num-warn' : '']"
-                    >
-                      {{ s.participantCount }}/10
-                    </span>
-                  </td>
-                  <td class="num-col">{{ s.entryCount }}</td>
-                  <td class="num-col">
-                    <span
-                      :class="['num-val', s.totalChars >= 5000 ? 'num-warn' : '']"
-                    >
-                      {{ s.totalChars }}/5000
-                    </span>
-                  </td>
-                  <td class="status-col">
-                    <span
-                      :class="['tag', s.locked ? 'tag-success' : 'tag-warning']"
-                    >
-                      {{ s.locked ? '已完结' : '进行中' }}
-                    </span>
-                  </td>
-                  <td class="time-col">
-                    <span class="time">{{ formatTime(s.updatedAt) }}</span>
-                  </td>
-                  <td class="action-col">
-                    <div class="actions">
-                      <button
-                        class="btn-secondary btn-sm"
-                        @click="viewStory(s.id)"
-                      >查看</button>
-                      <button
-                        class="btn-danger btn-sm"
-                        :disabled="resetting === s.id || s.entryCount <= 1"
-                        @click="askReset(s)"
-                      >
-                        {{ resetting === s.id ? '重置中...' : '重置' }}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="table-footer">
-            共 <strong>{{ stories.length }}</strong> 篇故事
-          </div>
-        </template>
       </section>
 
-      <section v-else class="admin-content card">
-        <div class="section-toolbar">
-          <span class="section-desc">维护敏感词库，用户提交内容命中时将被拦截并提示修改</span>
-        </div>
-
-        <div class="add-form">
-          <div class="form-row">
-            <div class="form-group grow">
-              <input
-                v-model="newWord"
-                placeholder="输入要添加的敏感词..."
-                maxlength="50"
-                @keyup.enter="handleAddWord"
-              />
-            </div>
-            <button
-              class="btn-primary"
-              :disabled="addingWord || !newWord.trim()"
-              @click="handleAddWord"
-            >
-              {{ addingWord ? '添加中...' : '+ 添加敏感词' }}
+      <template v-else>
+        <section v-if="activeTab === 'stories'" class="admin-content card">
+          <div class="section-toolbar">
+            <span class="section-desc">管理社区中的故事内容，可重置已完结或违规故事</span>
+            <button class="btn-secondary btn-sm" @click="loadStories">
+              🔄 刷新列表
             </button>
           </div>
-          <div v-if="wordError" class="error-text">{{ wordError }}</div>
-        </div>
 
-        <div v-if="wordsLoading" class="loading">正在加载...</div>
+          <div v-if="storiesLoading" class="loading">正在加载...</div>
 
-        <div v-else-if="sensitiveWords.length === 0" class="empty">
-          <div class="empty-icon">🔓</div>
-          <p>暂无敏感词，添加后用户提交内容将自动检测</p>
-        </div>
+          <div v-else-if="stories.length === 0" class="empty">
+            <div class="empty-icon">📭</div>
+            <p>暂无故事数据</p>
+          </div>
 
-        <template v-else>
-          <div class="word-list">
-            <div
-              v-for="w in sensitiveWords"
-              :key="w.id"
-              class="word-item"
-            >
-              <div class="word-content">
-                <span class="word-text">{{ w.word }}</span>
-                <span class="word-time">添加于 {{ formatTime(w.createdAt) }}</span>
+          <template v-else>
+            <div class="table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>故事标题</th>
+                    <th class="num-col">参与人数</th>
+                    <th class="num-col">段数</th>
+                    <th class="num-col">字数</th>
+                    <th class="status-col">状态</th>
+                    <th class="time-col">最后更新</th>
+                    <th class="action-col">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="s in stories" :key="s.id">
+                    <td class="title-cell">
+                      <router-link :to="`/story/${s.id}`" class="story-link">
+                        <span class="story-name">{{ s.title }}</span>
+                      </router-link>
+                      <span class="story-id">#{{ s.id.slice(0, 8) }}</span>
+                    </td>
+                    <td class="num-col">
+                      <span
+                        :class="['num-val', s.participantCount >= 10 ? 'num-warn' : '']"
+                      >
+                        {{ s.participantCount }}/10
+                      </span>
+                    </td>
+                    <td class="num-col">{{ s.entryCount }}</td>
+                    <td class="num-col">
+                      <span
+                        :class="['num-val', s.totalChars >= 5000 ? 'num-warn' : '']"
+                      >
+                        {{ s.totalChars }}/5000
+                      </span>
+                    </td>
+                    <td class="status-col">
+                      <span
+                        :class="['tag', s.locked ? 'tag-success' : 'tag-warning']"
+                      >
+                        {{ s.locked ? '已完结' : '进行中' }}
+                      </span>
+                    </td>
+                    <td class="time-col">
+                      <span class="time">{{ formatTime(s.updatedAt) }}</span>
+                    </td>
+                    <td class="action-col">
+                      <div class="actions">
+                        <button
+                          class="btn-secondary btn-sm"
+                          @click="viewStory(s.id)"
+                        >查看</button>
+                        <button
+                          class="btn-danger btn-sm"
+                          :disabled="resetting === s.id || s.entryCount <= 1"
+                          @click="askReset(s)"
+                        >
+                          {{ resetting === s.id ? '重置中...' : '重置' }}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="table-footer">
+              共 <strong>{{ stories.length }}</strong> 篇故事
+            </div>
+          </template>
+        </section>
+
+        <section v-else class="admin-content card">
+          <div class="section-toolbar">
+            <span class="section-desc">维护敏感词库，用户提交内容命中时将被拦截并提示修改</span>
+          </div>
+
+          <div class="add-form">
+            <div class="form-row">
+              <div class="form-group grow">
+                <input
+                  v-model="newWord"
+                  placeholder="输入要添加的敏感词..."
+                  maxlength="50"
+                  @keyup.enter="handleAddWord"
+                />
               </div>
               <button
-                class="btn-danger btn-sm"
-                :disabled="deletingId === w.id"
-                @click="handleDeleteWord(w)"
+                class="btn-primary"
+                :disabled="addingWord || !newWord.trim()"
+                @click="handleAddWord"
               >
-                {{ deletingId === w.id ? '删除中...' : '删除' }}
+                {{ addingWord ? '添加中...' : '+ 添加敏感词' }}
               </button>
             </div>
+            <div v-if="wordError" class="error-text">{{ wordError }}</div>
           </div>
-          <div class="table-footer">
-            共 <strong>{{ sensitiveWords.length }}</strong> 个敏感词
+
+          <div v-if="wordsLoading" class="loading">正在加载...</div>
+
+          <div v-else-if="sensitiveWords.length === 0" class="empty">
+            <div class="empty-icon">🔓</div>
+            <p>暂无敏感词，添加后用户提交内容将自动检测</p>
           </div>
-        </template>
-      </section>
+
+          <template v-else>
+            <div class="word-list">
+              <div
+                v-for="w in sensitiveWords"
+                :key="w.id"
+                class="word-item"
+              >
+                <div class="word-content">
+                  <span class="word-text">{{ w.word }}</span>
+                  <span class="word-time">添加于 {{ formatTime(w.createdAt) }}</span>
+                </div>
+                <button
+                  class="btn-danger btn-sm"
+                  :disabled="deletingId === w.id"
+                  @click="handleDeleteWord(w)"
+                >
+                  {{ deletingId === w.id ? '删除中...' : '删除' }}
+                </button>
+              </div>
+            </div>
+            <div class="table-footer">
+              共 <strong>{{ sensitiveWords.length }}</strong> 个敏感词
+            </div>
+          </template>
+        </section>
+      </template>
     </div>
 
     <div
@@ -259,13 +292,18 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import api from '../api.js'
+import api, { getAdminToken, setAdminToken, clearAdminToken } from '../api.js'
 import { formatTime } from '../utils.js'
 
 const router = useRouter()
 const activeTab = ref('stories')
+
+const isLoggedIn = ref(!!getAdminToken())
+const loginPassword = ref('')
+const logining = ref(false)
+const loginError = ref('')
 
 const stories = ref([])
 const storiesLoading = ref(false)
@@ -290,23 +328,65 @@ function showToast(message, type = 'success') {
   setTimeout(() => (toast.value.show = false), 2800)
 }
 
+async function handleLogin() {
+  if (!loginPassword.value.trim()) return
+  loginError.value = ''
+  logining.value = true
+  try {
+    const res = await api.adminLogin(loginPassword.value.trim())
+    setAdminToken(res.token)
+    isLoggedIn.value = true
+    loginPassword.value = ''
+    showToast('登录成功')
+    await loadStories()
+  } catch (e) {
+    loginError.value = e.message
+  } finally {
+    logining.value = false
+  }
+}
+
+async function handleLogout() {
+  try {
+    await api.adminLogout()
+  } catch (e) {
+  }
+  clearAdminToken()
+  isLoggedIn.value = false
+  stories.value = []
+  sensitiveWords.value = []
+  showToast('已退出登录')
+}
+
 async function loadStories() {
+  if (!isLoggedIn.value) return
   storiesLoading.value = true
   try {
     stories.value = await api.getStories()
   } catch (e) {
-    showToast('加载失败：' + e.message, 'error')
+    if (e.message.includes('管理员权限') || e.message.includes('登录')) {
+      isLoggedIn.value = false
+      clearAdminToken()
+    } else {
+      showToast('加载失败：' + e.message, 'error')
+    }
   } finally {
     storiesLoading.value = false
   }
 }
 
 async function loadSensitiveWords() {
+  if (!isLoggedIn.value) return
   wordsLoading.value = true
   try {
     sensitiveWords.value = await api.getSensitiveWords()
   } catch (e) {
-    showToast('加载失败：' + e.message, 'error')
+    if (e.message.includes('管理员权限') || e.message.includes('登录')) {
+      isLoggedIn.value = false
+      clearAdminToken()
+    } else {
+      showToast('加载失败：' + e.message, 'error')
+    }
   } finally {
     wordsLoading.value = false
   }
@@ -332,7 +412,13 @@ async function doReset() {
     showToast('故事已重置成功')
     await loadStories()
   } catch (e) {
-    resetError.value = e.message
+    if (e.message.includes('管理员权限') || e.message.includes('登录')) {
+      isLoggedIn.value = false
+      clearAdminToken()
+      confirmVisible.value = false
+    } else {
+      resetError.value = e.message
+    }
   } finally {
     resetting.value = null
   }
@@ -349,7 +435,12 @@ async function handleAddWord() {
     showToast('敏感词添加成功')
     await loadSensitiveWords()
   } catch (e) {
-    wordError.value = e.message
+    if (e.message.includes('管理员权限') || e.message.includes('登录')) {
+      isLoggedIn.value = false
+      clearAdminToken()
+    } else {
+      wordError.value = e.message
+    }
   } finally {
     addingWord.value = false
   }
@@ -369,13 +460,20 @@ async function doDeleteWord() {
     showToast('敏感词已删除')
     await loadSensitiveWords()
   } catch (e) {
-    showToast('删除失败：' + e.message, 'error')
+    if (e.message.includes('管理员权限') || e.message.includes('登录')) {
+      isLoggedIn.value = false
+      clearAdminToken()
+      wordConfirmVisible.value = false
+    } else {
+      showToast('删除失败：' + e.message, 'error')
+    }
   } finally {
     deletingId.value = null
   }
 }
 
 watch(activeTab, (tab) => {
+  if (!isLoggedIn.value) return
   if (tab === 'stories' && stories.value.length === 0) {
     loadStories()
   }
@@ -385,7 +483,9 @@ watch(activeTab, (tab) => {
 })
 
 onMounted(() => {
-  loadStories()
+  if (isLoggedIn.value) {
+    loadStories()
+  }
 })
 </script>
 
@@ -412,6 +512,22 @@ onMounted(() => {
 .admin-subtitle {
   color: var(--text-muted);
   font-size: 14px;
+}
+
+.admin-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  background: rgba(245, 158, 11, 0.15);
+  color: #b45309;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .tabs {
@@ -441,6 +557,47 @@ onMounted(() => {
   color: white;
   border-color: var(--primary);
   box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+
+.login-section {
+  text-align: center;
+  padding: 60px 40px;
+  max-width: 440px;
+  margin: 0 auto;
+}
+
+.login-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+}
+
+.login-title {
+  font-size: 22px;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.login-desc {
+  color: var(--text-muted);
+  font-size: 14px;
+  margin-bottom: 28px;
+}
+
+.login-form {
+  text-align: left;
+}
+
+.btn-block {
+  width: 100%;
+  padding: 12px;
+  font-size: 15px;
+}
+
+.login-hint {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-light);
 }
 
 .section-toolbar {
@@ -565,6 +722,7 @@ onMounted(() => {
 
 .form-group.grow {
   flex: 1;
+  margin-bottom: 0;
 }
 
 .word-list {
@@ -776,6 +934,10 @@ onMounted(() => {
     flex-direction: column;
     align-items: flex-start;
   }
+  .admin-user {
+    width: 100%;
+    justify-content: space-between;
+  }
   .confirm-info {
     padding: 12px 14px;
   }
@@ -786,6 +948,9 @@ onMounted(() => {
   .form-row {
     flex-direction: column;
     align-items: stretch;
+  }
+  .login-section {
+    padding: 40px 20px;
   }
 }
 </style>
