@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_FILE = path.join(__dirname, 'data', 'stories.json');
+const SENSITIVE_FILE = path.join(__dirname, 'data', 'sensitive-words.json');
 
 const MAX_PARTICIPANTS = 10;
 const MAX_CHARS_PER_STORY = 5000;
@@ -179,6 +180,83 @@ export function resetStory(storyId) {
   updateStoryStatus(story);
   writeData(data);
   return { success: true, story: formatStoryDetail(story) };
+}
+
+function ensureSensitiveFile() {
+  ensureDataDir();
+  if (!fs.existsSync(SENSITIVE_FILE)) {
+    const initial = { words: [] };
+    fs.writeFileSync(SENSITIVE_FILE, JSON.stringify(initial, null, 2), 'utf-8');
+  }
+}
+
+function readSensitiveData() {
+  ensureSensitiveFile();
+  try {
+    const raw = fs.readFileSync(SENSITIVE_FILE, 'utf-8');
+    return JSON.parse(raw);
+  } catch (e) {
+    return { words: [] };
+  }
+}
+
+function writeSensitiveData(data) {
+  ensureSensitiveFile();
+  fs.writeFileSync(SENSITIVE_FILE, JSON.stringify(data, null, 2), 'utf-8');
+}
+
+export function getAllSensitiveWords() {
+  const data = readSensitiveData();
+  return data.words.slice().sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export function addSensitiveWord(word) {
+  const trimmed = (word || '').trim();
+  if (!trimmed) {
+    return { success: false, error: '敏感词不能为空', code: 400 };
+  }
+  const data = readSensitiveData();
+  const exists = data.words.find(w => w.word === trimmed);
+  if (exists) {
+    return { success: false, error: '该敏感词已存在', code: 409 };
+  }
+  const item = {
+    id: generateId(),
+    word: trimmed,
+    createdAt: Date.now()
+  };
+  data.words.push(item);
+  writeSensitiveData(data);
+  return { success: true, word: item };
+}
+
+export function deleteSensitiveWord(id) {
+  const data = readSensitiveData();
+  const idx = data.words.findIndex(w => w.id === id);
+  if (idx === -1) {
+    return { success: false, error: '敏感词不存在', code: 404 };
+  }
+  data.words.splice(idx, 1);
+  writeSensitiveData(data);
+  return { success: true };
+}
+
+export function checkSensitiveWords(text) {
+  if (!text) {
+    return { hit: false, matched: [] };
+  }
+  const data = readSensitiveData();
+  const matched = [];
+  const lowerText = text.toLowerCase();
+  for (const item of data.words) {
+    if (lowerText.includes(item.word.toLowerCase())) {
+      matched.push(item.word);
+    }
+  }
+  return {
+    hit: matched.length > 0,
+    matched: Array.from(new Set(matched))
+  };
 }
 
 export { MAX_PARTICIPANTS, MAX_CHARS_PER_STORY };

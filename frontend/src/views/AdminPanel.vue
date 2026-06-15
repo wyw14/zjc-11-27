@@ -5,16 +5,34 @@
         <div class="admin-header-inner">
           <div>
             <h1>🛠️ 故事管理中心</h1>
-            <p class="admin-subtitle">管理所有社区微小说，支持重置故事内容</p>
+            <p class="admin-subtitle">管理所有社区微小说与敏感词配置</p>
           </div>
-          <button class="btn-secondary" @click="loadStories">
-            🔄 刷新列表
+        </div>
+        <div class="tabs">
+          <button
+            :class="['tab-btn', activeTab === 'stories' ? 'active' : '']"
+            @click="activeTab = 'stories'"
+          >
+            📚 故事管理
+          </button>
+          <button
+            :class="['tab-btn', activeTab === 'sensitive' ? 'active' : '']"
+            @click="activeTab = 'sensitive'"
+          >
+            🔒 敏感词维护
           </button>
         </div>
       </header>
 
-      <section class="admin-content card">
-        <div v-if="loading" class="loading">正在加载...</div>
+      <section v-if="activeTab === 'stories'" class="admin-content card">
+        <div class="section-toolbar">
+          <span class="section-desc">管理社区中的故事内容，可重置已完结或违规故事</span>
+          <button class="btn-secondary btn-sm" @click="loadStories">
+            🔄 刷新列表
+          </button>
+        </div>
+
+        <div v-if="storiesLoading" class="loading">正在加载...</div>
 
         <div v-else-if="stories.length === 0" class="empty">
           <div class="empty-icon">📭</div>
@@ -92,6 +110,65 @@
           </div>
         </template>
       </section>
+
+      <section v-else class="admin-content card">
+        <div class="section-toolbar">
+          <span class="section-desc">维护敏感词库，用户提交内容命中时将被拦截并提示修改</span>
+        </div>
+
+        <div class="add-form">
+          <div class="form-row">
+            <div class="form-group grow">
+              <input
+                v-model="newWord"
+                placeholder="输入要添加的敏感词..."
+                maxlength="50"
+                @keyup.enter="handleAddWord"
+              />
+            </div>
+            <button
+              class="btn-primary"
+              :disabled="addingWord || !newWord.trim()"
+              @click="handleAddWord"
+            >
+              {{ addingWord ? '添加中...' : '+ 添加敏感词' }}
+            </button>
+          </div>
+          <div v-if="wordError" class="error-text">{{ wordError }}</div>
+        </div>
+
+        <div v-if="wordsLoading" class="loading">正在加载...</div>
+
+        <div v-else-if="sensitiveWords.length === 0" class="empty">
+          <div class="empty-icon">🔓</div>
+          <p>暂无敏感词，添加后用户提交内容将自动检测</p>
+        </div>
+
+        <template v-else>
+          <div class="word-list">
+            <div
+              v-for="w in sensitiveWords"
+              :key="w.id"
+              class="word-item"
+            >
+              <div class="word-content">
+                <span class="word-text">{{ w.word }}</span>
+                <span class="word-time">添加于 {{ formatTime(w.createdAt) }}</span>
+              </div>
+              <button
+                class="btn-danger btn-sm"
+                :disabled="deletingId === w.id"
+                @click="handleDeleteWord(w)"
+              >
+                {{ deletingId === w.id ? '删除中...' : '删除' }}
+              </button>
+            </div>
+          </div>
+          <div class="table-footer">
+            共 <strong>{{ sensitiveWords.length }}</strong> 个敏感词
+          </div>
+        </template>
+      </section>
     </div>
 
     <div
@@ -138,6 +215,43 @@
       </div>
     </div>
 
+    <div
+      v-if="wordConfirmVisible"
+      class="modal-mask"
+      @click.self="wordConfirmVisible = false"
+    >
+      <div class="modal card confirm-modal">
+        <div class="modal-header danger">
+          <h3>⚠️ 确认删除</h3>
+          <button class="close-btn" @click="wordConfirmVisible = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="confirm-content">
+            <div class="confirm-icon">🗑️</div>
+            <p class="confirm-text">
+              确定要删除敏感词 <strong>{{ targetWord?.word }}</strong> 吗？
+            </p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button
+            class="btn-secondary"
+            :disabled="deletingId === targetWord?.id"
+            @click="wordConfirmVisible = false"
+          >
+            取消
+          </button>
+          <button
+            class="btn-danger"
+            :disabled="deletingId === targetWord?.id"
+            @click="doDeleteWord"
+          >
+            {{ deletingId === targetWord?.id ? '删除中...' : '确认删除' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div v-if="toast.show" :class="['toast', toast.type]">
       {{ toast.message }}
     </div>
@@ -145,18 +259,29 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../api.js'
 import { formatTime } from '../utils.js'
 
 const router = useRouter()
+const activeTab = ref('stories')
+
 const stories = ref([])
-const loading = ref(false)
+const storiesLoading = ref(false)
 const resetting = ref(null)
 const resetError = ref('')
 const confirmVisible = ref(false)
 const targetStory = ref(null)
+
+const sensitiveWords = ref([])
+const wordsLoading = ref(false)
+const newWord = ref('')
+const addingWord = ref(false)
+const deletingId = ref(null)
+const wordError = ref('')
+const wordConfirmVisible = ref(false)
+const targetWord = ref(null)
 
 const toast = ref({ show: false, message: '', type: 'success' })
 
@@ -166,13 +291,24 @@ function showToast(message, type = 'success') {
 }
 
 async function loadStories() {
-  loading.value = true
+  storiesLoading.value = true
   try {
     stories.value = await api.getStories()
   } catch (e) {
     showToast('加载失败：' + e.message, 'error')
   } finally {
-    loading.value = false
+    storiesLoading.value = false
+  }
+}
+
+async function loadSensitiveWords() {
+  wordsLoading.value = true
+  try {
+    sensitiveWords.value = await api.getSensitiveWords()
+  } catch (e) {
+    showToast('加载失败：' + e.message, 'error')
+  } finally {
+    wordsLoading.value = false
   }
 }
 
@@ -202,7 +338,55 @@ async function doReset() {
   }
 }
 
-onMounted(loadStories)
+async function handleAddWord() {
+  const trimmed = newWord.value.trim()
+  if (!trimmed) return
+  wordError.value = ''
+  addingWord.value = true
+  try {
+    await api.addSensitiveWord(trimmed)
+    newWord.value = ''
+    showToast('敏感词添加成功')
+    await loadSensitiveWords()
+  } catch (e) {
+    wordError.value = e.message
+  } finally {
+    addingWord.value = false
+  }
+}
+
+function handleDeleteWord(word) {
+  targetWord.value = word
+  wordConfirmVisible.value = true
+}
+
+async function doDeleteWord() {
+  if (!targetWord.value) return
+  deletingId.value = targetWord.value.id
+  try {
+    await api.deleteSensitiveWord(targetWord.value.id)
+    wordConfirmVisible.value = false
+    showToast('敏感词已删除')
+    await loadSensitiveWords()
+  } catch (e) {
+    showToast('删除失败：' + e.message, 'error')
+  } finally {
+    deletingId.value = null
+  }
+}
+
+watch(activeTab, (tab) => {
+  if (tab === 'stories' && stories.value.length === 0) {
+    loadStories()
+  }
+  if (tab === 'sensitive' && sensitiveWords.value.length === 0) {
+    loadSensitiveWords()
+  }
+})
+
+onMounted(() => {
+  loadStories()
+})
 </script>
 
 <style scoped>
@@ -217,6 +401,7 @@ onMounted(loadStories)
   align-items: center;
   justify-content: space-between;
   gap: 20px;
+  margin-bottom: 20px;
 }
 
 .admin-header h1 {
@@ -225,6 +410,50 @@ onMounted(loadStories)
 }
 
 .admin-subtitle {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.tab-btn {
+  padding: 10px 18px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab-btn:hover {
+  border-color: var(--primary-light);
+  color: var(--primary);
+}
+
+.tab-btn.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+
+.section-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.section-desc {
   color: var(--text-muted);
   font-size: 14px;
 }
@@ -319,6 +548,62 @@ onMounted(loadStories)
   display: flex;
   gap: 8px;
   justify-content: center;
+}
+
+.add-form {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: var(--surface-alt);
+  border-radius: var(--radius-sm);
+}
+
+.form-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.form-group.grow {
+  flex: 1;
+}
+
+.word-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.word-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: all 0.2s;
+}
+
+.word-item:hover {
+  border-color: var(--primary-light);
+}
+
+.word-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.word-text {
+  font-weight: 600;
+  color: var(--error);
+  font-size: 15px;
+}
+
+.word-time {
+  font-size: 11px;
+  color: var(--text-light);
 }
 
 .table-footer {
@@ -493,6 +778,14 @@ onMounted(loadStories)
   }
   .confirm-info {
     padding: 12px 14px;
+  }
+  .section-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .form-row {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 </style>

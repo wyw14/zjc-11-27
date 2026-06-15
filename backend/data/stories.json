@@ -37,6 +37,32 @@
       "participantCount": 1,
       "locked": false,
       "lockedReason": null
+    },
+    "mqei6dori9ibnt": {
+      "id": "mqei6dori9ibnt",
+      "title": "正常故事标题",
+      "createdAt": 1781485008076,
+      "updatedAt": 1781485008087,
+      "entries": [
+        {
+          "id": "mqei6dosqokv8h",
+          "author": "测试作者",
+          "content": "这是一段正常的测试内容",
+          "order": 1,
+          "createdAt": 1781485008076
+        },
+        {
+          "id": "mqei6dp3ya1z7r",
+          "author": "续写作者",
+          "content": "这段续写是正常的内容",
+          "order": 2,
+          "createdAt": 1781485008087
+        }
+      ],
+      "totalChars": 21,
+      "participantCount": 2,
+      "locked": false,
+      "lockedReason": null
     }
   }
 }

@@ -19,7 +19,10 @@ export const api = {
   getStory: (id) => request.get(`/stories/${id}`),
   createStory: (data) => request.post('/stories', data),
   addEntry: (id, data) => request.post(`/stories/${id}/entries`, data),
-  resetStory: (id) => request.post(`/admin/stories/${id}/reset`)
+  resetStory: (id) => request.post(`/admin/stories/${id}/reset`),
+  getSensitiveWords: () => request.get('/admin/sensitive-words'),
+  addSensitiveWord: (word) => request.post('/admin/sensitive-words', { word }),
+  deleteSensitiveWord: (id) => request.delete(`/admin/sensitive-words/${id}`)
 }
 
 export default api

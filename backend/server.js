@@ -7,7 +7,11 @@ import {
   addEntry,
   resetStory,
   MAX_PARTICIPANTS,
-  MAX_CHARS_PER_STORY
+  MAX_CHARS_PER_STORY,
+  getAllSensitiveWords,
+  addSensitiveWord,
+  deleteSensitiveWord,
+  checkSensitiveWords
 } from './storage.js';
 
 const app = express();
@@ -60,6 +64,17 @@ app.post('/api/stories', (req, res) => {
     if (content.length > MAX_CHARS_PER_STORY) {
       return res.status(400).json({ error: `开篇内容不能超过 ${MAX_CHARS_PER_STORY} 字` });
     }
+    const titleCheck = checkSensitiveWords(title);
+    const contentCheck = checkSensitiveWords(content);
+    const authorCheck = checkSensitiveWords(author);
+    const allMatched = [...titleCheck.matched, ...contentCheck.matched, ...authorCheck.matched];
+    if (allMatched.length > 0) {
+      const unique = Array.from(new Set(allMatched));
+      return res.status(400).json({
+        error: `内容包含敏感词，请修改后再提交：${unique.join('、')}`,
+        sensitiveWords: unique
+      });
+    }
     const story = createStory({
       title: title.trim(),
       content: content.trim(),
@@ -80,6 +95,16 @@ app.post('/api/stories/:id/entries', (req, res) => {
     }
     if (!author || !author.trim()) {
       return res.status(400).json({ error: '作者名称不能为空' });
+    }
+    const contentCheck = checkSensitiveWords(content);
+    const authorCheck = checkSensitiveWords(author);
+    const allMatched = [...contentCheck.matched, ...authorCheck.matched];
+    if (allMatched.length > 0) {
+      const unique = Array.from(new Set(allMatched));
+      return res.status(400).json({
+        error: `内容包含敏感词，请修改后再提交：${unique.join('、')}`,
+        sensitiveWords: unique
+      });
     }
     const result = addEntry(req.params.id, {
       content: content.trim(),
@@ -108,6 +133,43 @@ app.post('/api/admin/stories/:id/reset', (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: '重置故事失败' });
+  }
+});
+
+app.get('/api/admin/sensitive-words', (_req, res) => {
+  try {
+    const words = getAllSensitiveWords();
+    res.json(words);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: '获取敏感词列表失败' });
+  }
+});
+
+app.post('/api/admin/sensitive-words', (req, res) => {
+  try {
+    const { word } = req.body || {};
+    const result = addSensitiveWord(word);
+    if (!result.success) {
+      return res.status(result.code || 400).json({ error: result.error });
+    }
+    res.status(201).json(result.word);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: '添加敏感词失败' });
+  }
+});
+
+app.delete('/api/admin/sensitive-words/:id', (req, res) => {
+  try {
+    const result = deleteSensitiveWord(req.params.id);
+    if (!result.success) {
+      return res.status(result.code || 400).json({ error: result.error });
+    }
+    res.json({ message: '删除成功' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: '删除敏感词失败' });
   }
 });
 
